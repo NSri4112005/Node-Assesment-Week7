@@ -1,6 +1,8 @@
 import { IncomingMessage, ServerResponse } from "http";
 import { authRoutes } from "./routes/auth.routes";
 import { productRoutes } from "./routes/product.routes";
+import { inventoryRoutes } from "./routes/inventory.routes";
+import { reportRoutes } from "./routes/report.routes";
 
 export const router = async (
   req: IncomingMessage,
@@ -28,6 +30,16 @@ export const router = async (
       queryParams
     )
   ) {
+    return true;
+  }
+
+  // Inventory routes
+  if (await inventoryRoutes(req, res, pathname)) {
+    return true;
+  }
+
+  // Report routes
+  if (await reportRoutes(req, res, pathname)) {
     return true;
   }
 
