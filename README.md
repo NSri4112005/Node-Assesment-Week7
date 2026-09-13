@@ -1,4 +1,4 @@
-# Inventory & Stock Management System
+# Inventory & Stock Management System - Conflict Branch
 
 A backend inventory and stock management system built using Node.js, TypeScript, MongoDB, and Mongoose.
 
