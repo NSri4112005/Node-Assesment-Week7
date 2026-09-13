@@ -25,21 +25,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Public health/root endpoint
+  if (req.method === "GET" && req.url === "/") {
+    res.writeHead(200);
+    res.end(
+      JSON.stringify({
+        success: true,
+        message: "Inventory Management API is running",
+      })
+    );
+    return;
+  }
+
   try {
     const handled = await router(req, res);
 
     if (handled) {
-      return;
-    }
-
-    if (req.method === "GET" && req.url === "/") {
-      res.writeHead(200);
-      res.end(
-        JSON.stringify({
-          success: true,
-          message: "Inventory Management API is running",
-        })
-      );
       return;
     }
 
