@@ -1,5 +1,4 @@
-# Inventory & Stock Management System - Main Branch
-
+# Inventory & Stock Management System
 A backend inventory and stock management system built using Node.js, TypeScript, MongoDB, and Mongoose.
 
 ## Features
