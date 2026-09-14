@@ -1,4 +1,5 @@
 import { Product } from "../models/product.model";
+import { Inventory } from "../models/inventory.model";
 import {
   CreateProductInput,
   UpdateProductInput,
@@ -7,7 +8,7 @@ import {
   PaginationMeta,
 } from "../types/product.types";
 
-const toProductResponse = (product: {
+interface ProductDocument {
   _id: unknown;
   name: string;
   sku: string;
@@ -17,7 +18,16 @@ const toProductResponse = (product: {
   reorderLevel: number;
   createdAt: Date;
   updatedAt: Date;
-}): ProductResponse => {
+}
+
+interface ProductWithStock extends ProductDocument {
+  stock: number;
+}
+
+const toProductResponse = (
+  product: ProductDocument,
+  stock?: number
+): ProductResponse => {
   return {
     id: String(product._id),
     name: product.name,
@@ -26,6 +36,7 @@ const toProductResponse = (product: {
     price: product.price,
     category: product.category,
     reorderLevel: product.reorderLevel,
+    ...(stock !== undefined ? { stock } : {}),
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
   };
@@ -63,7 +74,14 @@ export const getProductById = async (
     throw new Error("Product not found");
   }
 
-  return toProductResponse(product);
+  const inventory = await Inventory.findOne({
+    productId: product._id,
+  });
+
+  return toProductResponse(
+    product,
+    inventory?.quantity ?? 0
+  );
 };
 
 export const updateProduct = async (
@@ -86,7 +104,9 @@ export const updateProduct = async (
     ...(input.sku
       ? { sku: input.sku.toUpperCase().trim() }
       : {}),
-    ...(input.name ? { name: input.name.trim() } : {}),
+    ...(input.name
+      ? { name: input.name.trim() }
+      : {}),
     ...(input.category
       ? { category: input.category.trim() }
       : {}),
@@ -108,7 +128,14 @@ export const updateProduct = async (
     throw new Error("Product not found");
   }
 
-  return toProductResponse(product);
+  const inventory = await Inventory.findOne({
+    productId: product._id,
+  });
+
+  return toProductResponse(
+    product,
+    inventory?.quantity ?? 0
+  );
 };
 
 export const deleteProduct = async (
@@ -130,6 +157,7 @@ export const getProducts = async (
   const {
     search,
     category,
+    stock,
     page = 1,
     limit = 10,
   } = query;
@@ -138,8 +166,18 @@ export const getProducts = async (
 
   if (search) {
     filter.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { sku: { $regex: search, $options: "i" } },
+      {
+        name: {
+          $regex: search,
+          $options: "i",
+        },
+      },
+      {
+        sku: {
+          $regex: search,
+          $options: "i",
+        },
+      },
     ];
   }
 
@@ -147,28 +185,86 @@ export const getProducts = async (
     filter.category = category;
   }
 
-  const skip = (page - 1) * limit;
+  const products = await Product.find(filter);
 
-  let productsQuery = Product.find(filter);
+  const inventoryRecords = await Inventory.find();
 
-  if (query.sort === "price_asc") {
-    productsQuery = productsQuery.sort({ price: 1 });
-  } else if (query.sort === "price_desc") {
-    productsQuery = productsQuery.sort({ price: -1 });
-  } else if (query.sort === "stock_asc") {
-    // Stock sorting will be handled after Inventory integration.
-    productsQuery = productsQuery.sort({ name: 1 });
-  } else {
-    productsQuery = productsQuery.sort({ createdAt: -1 });
+  const stockMap = new Map<string, number>();
+
+  for (const inventory of inventoryRecords) {
+    stockMap.set(
+      String(inventory.productId),
+      inventory.quantity
+    );
   }
 
-  const [products, total] = await Promise.all([
-    productsQuery.skip(skip).limit(limit),
-    Product.countDocuments(filter),
-  ]);
+  let productsWithStock: ProductWithStock[] = products.map(
+    (product) => ({
+      _id: product._id,
+      name: product.name,
+      sku: product.sku,
+      description: product.description,
+      price: product.price,
+      category: product.category,
+      reorderLevel: product.reorderLevel,
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
+      stock:
+        stockMap.get(String(product._id)) ?? 0,
+    })
+  );
+
+  if (stock === "low") {
+    productsWithStock = productsWithStock.filter(
+      (product) =>
+        product.stock > 0 &&
+        product.stock <= product.reorderLevel
+    );
+  }
+
+  if (stock === "out") {
+    productsWithStock = productsWithStock.filter(
+      (product) => product.stock === 0
+    );
+  }
+
+  if (query.sort === "price_asc") {
+    productsWithStock.sort(
+      (a, b) => a.price - b.price
+    );
+  } else if (query.sort === "price_desc") {
+    productsWithStock.sort(
+      (a, b) => b.price - a.price
+    );
+  } else if (query.sort === "stock_asc") {
+    productsWithStock.sort(
+      (a, b) => a.stock - b.stock
+    );
+  } else {
+    productsWithStock.sort(
+      (a, b) =>
+        b.createdAt.getTime() -
+        a.createdAt.getTime()
+    );
+  }
+
+  const total = productsWithStock.length;
+
+  const skip = (page - 1) * limit;
+
+  const paginatedProducts =
+    productsWithStock.slice(
+      skip,
+      skip + limit
+    );
 
   return {
-    data: products.map(toProductResponse),
+    data: paginatedProducts.map((product) =>
+      toProductResponse(
+        product,
+        product.stock
+      )
+    ),
     pagination: {
       page,
       limit,

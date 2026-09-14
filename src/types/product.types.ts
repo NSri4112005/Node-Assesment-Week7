@@ -40,6 +40,7 @@ export interface ProductResponse {
   price: number;
   category: string;
   reorderLevel: number;
+  stock?: number;
   createdAt: Date;
   updatedAt: Date;
 }

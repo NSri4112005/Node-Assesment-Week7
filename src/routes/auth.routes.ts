@@ -8,6 +8,7 @@ import {
   authenticate,
   AuthenticatedRequest,
 } from "../middleware/auth.middleware";
+import { rateLimit } from "../middleware/rate-limit.middleware";
 
 export const authRoutes = async (
   req: IncomingMessage,
@@ -20,6 +21,11 @@ export const authRoutes = async (
   }
 
   if (req.method === "POST" && pathname === "/api/auth/login") {
+    // Maximum 5 login requests per minute per client
+    if (!rateLimit(req, res, 5, 60_000)) {
+      return true;
+    }
+
     await loginController(req, res);
     return true;
   }
